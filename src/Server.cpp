@@ -49,22 +49,44 @@ int main(int argc, char **argv) {
   }
   
   struct sockaddr_in client_addr;
-  int client_addr_len = sizeof(client_addr);
+  socklen_t client_addr_len = sizeof(client_addr);
   
   std::cout << "Waiting for a client to connect...\n";
   
   // accept(server_fd, (struct sockaddr *) &client_addr, (socklen_t *) &client_addr_len);
-  while(1){
-    int client_fd = accept(server_fd, (struct sockaddr *) &client_addr, (socklen_t *) &client_addr_len);
+  while (true) {
+    int client_fd = accept(server_fd, (struct sockaddr *)&client_addr, &client_addr_len);
     if (client_fd < 0) {
       std::cerr << "接收客户端连接失败\n";
       continue;
     }
-    std::cout << "Client connected\n";
-    std::string response = "+PONG\r\n";
-    send(client_fd, response.c_str(), response.size(), 0);    
-    close(client_fd);
-    sleep(1);
+
+    // 用于读取客户端数据的缓冲区
+    char buffer[1024];
+    ssize_t bytes_received;
+
+    // 循环读取客户端数据并发送响应
+    while (true) {
+      memset(buffer, 0, sizeof(buffer));  // 每次读取前清空缓冲区
+
+      bytes_received = recv(client_fd, buffer, sizeof(buffer) - 1, 0);  // 从客户端读取数据
+      if (bytes_received < 0) {
+        std::cerr << "接收客户端数据失败\n";
+        break;
+      } else if (bytes_received == 0) {
+        std::cout << "客户端已断开连接\n";
+        break;  // 客户端断开连接
+      }
+
+      // 打印接收到的数据（用于调试）
+      std::cout << "收到来自客户端的数据: " << buffer << "\n";
+
+      // 向客户端发送响应
+      std::string response = "+PONG\r\n";
+      send(client_fd, response.c_str(), response.size(), 0);
+    }
+
+    close(client_fd);  // 关闭客户端连接
   }
   close(server_fd);
 
