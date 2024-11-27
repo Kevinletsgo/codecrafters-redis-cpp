@@ -71,8 +71,12 @@ void handleClient(int client_fd) {
             std::cerr << "Send failed with errno: " << errno << std::endl;
           }
         }
-        //std::string response = "+PONG\r\n";
-        //send(client_fd, response.c_str(), response.size(), 0);//发送PONG给客户端 
+        //reply Ping
+        if(strcasecmp(result[0].c_str(),"PING") == 0) {
+          std::string response = "+PONG\r\n";
+          send(client_fd, response.c_str(), response.size(), 0);
+        }
+//发送PONG给客户端 
     }
     close(client_fd); // 
 }
