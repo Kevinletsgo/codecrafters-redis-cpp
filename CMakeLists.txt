@@ -3,6 +3,7 @@ cmake_minimum_required(VERSION 3.13)
 project(redis-starter-cpp)
 
 file(GLOB_RECURSE SOURCE_FILES src/*.cpp)
+# find_file(SOURCE_FILES "Server_asio.cpp" PATHS ${CMAKE_SOURCE_DIR}/src)
 
 set(CMAKE_CXX_STANDARD 23) # Enable the C++23 standard
 set(THREADS_PREFER_PTHREAD_FLAG ON)
