@@ -68,34 +68,33 @@ void handleClient(int client_fd) {
             auto buf = result[i];
             oss << "$"  << buf.size() << "\r\n" << buf <<"\r\n";
           }
-          std::string res = oss.str();
-          int ret = send(client_fd, res.c_str(), res.size(), 0); //不能用sizeof(res.c_str())因为这里计算的是指针的大小
-          if(ret == -1) {
-            std::cerr << "Send failed with errno: " << errno << std::endl;
-          }
+          response = oss.str();
         }
         //reply Ping
         if(strcasecmp(result[0].c_str(),"PING") == 0) {
-          const std::string response = "+PONG\r\n";
-          send(client_fd, response.c_str(), response.size(), 0);
+          response = "+PONG\r\n";
+          
         }
         //reply set
         if(strcasecmp(result[0].c_str(), "SET") == 0) {
           
             //std::lock_guard<std::mutex> lock(logMutex);
             umap[result[1]] = result[2];
-          
-          const std::string response = "+OK\r\n";
-          send(client_fd, response.c_str(), response.size(), 0);
+          response = "+OK\r\n";
         }
         //reply get
         if(strcasecmp(result[0].c_str(), "GET") == 0) {//$3\r\nbar\r\n
           std::string str = umap[result[1]];
           std::ostringstream oss;
           oss << "$" << str.size() << "\r\n" << str << "\r\n";
-          const std::string res = oss.str();
-          send(client_fd,  res.c_str(), res.size(), 0);
+          response = oss.str();  
         }
+        //send messages
+        int ret = send(client_fd, response.c_str(), response.size(), 0); //不能用sizeof(res.c_str())因为这里计算的是指针的大小
+        if(ret == -1) {
+          std::cerr << "Send failed with errno: " << errno << std::endl;
+        }
+        result.clear();
     }
     close(client_fd); 
 }
