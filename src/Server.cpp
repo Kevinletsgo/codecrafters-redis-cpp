@@ -97,7 +97,7 @@ void handleClient(int client_fd) {
           send(client_fd,  res.c_str(), res.size(), 0);
         }
     }
-    close(client_fd); /
+    close(client_fd); 
 }
 int main(int argc, char **argv) {
   // Flush after every std::cout / std::cerr
