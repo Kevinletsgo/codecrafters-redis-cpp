@@ -11,10 +11,12 @@
 #include <mutex>
 #include <vector>
 #include <sstream>
+#include <unordered_map>
 
 using std::cout;
 std::mutex logMutex; // 控制日志输出的互斥锁
 std::vector<std::thread> threads; // 存储所有线程
+std::unordered_map<std::string, std::string> umap;
 
 void parserRedis(std::string& input, std::vector<std::string> &result) {
   std::istringstream stream(input);
@@ -43,7 +45,7 @@ void parserRedis(std::string& input, std::vector<std::string> &result) {
   }
 }
 void handleClient(int client_fd) {
-    std::vector<std::string> result;
+    std::vector<std::string> result;//作为局部变量避免被复用
     char buffer[1024];
     while (true) {
         memset(buffer, 0, sizeof(buffer));
@@ -54,8 +56,9 @@ void handleClient(int client_fd) {
             break;
         }
         std::lock_guard<std::mutex> lock(logMutex);
-        std::cout << "Received: " << buffer << std::endl;
         std::string input = buffer;
+        std::string response;
+        //result.clear();//很关键
         parserRedis(input, result);
         //reply Echo
         if(strcasecmp(result[0].c_str(), "Echo") == 0) {
@@ -73,12 +76,28 @@ void handleClient(int client_fd) {
         }
         //reply Ping
         if(strcasecmp(result[0].c_str(),"PING") == 0) {
-          std::string response = "+PONG\r\n";
+          const std::string response = "+PONG\r\n";
           send(client_fd, response.c_str(), response.size(), 0);
         }
-//发送PONG给客户端 
+        //reply set
+        if(strcasecmp(result[0].c_str(), "SET") == 0) {
+          
+            //std::lock_guard<std::mutex> lock(logMutex);
+            umap[result[1]] = result[2];
+          
+          const std::string response = "+OK\r\n";
+          send(client_fd, response.c_str(), response.size(), 0);
+        }
+        //reply get
+        if(strcasecmp(result[0].c_str(), "GET") == 0) {//$3\r\nbar\r\n
+          std::string str = umap[result[1]];
+          std::ostringstream oss;
+          oss << "$" << str.size() << "\r\n" << str << "\r\n";
+          const std::string res = oss.str();
+          send(client_fd,  res.c_str(), res.size(), 0);
+        }
     }
-    close(client_fd); // 
+    close(client_fd); /
 }
 int main(int argc, char **argv) {
   // Flush after every std::cout / std::cerr
