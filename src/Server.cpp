@@ -12,22 +12,22 @@
 #include <vector>
 #include <sstream>
 #include <unordered_map>
+#include <chrono>
 
 using std::cout;
 std::mutex logMutex; // 控制日志输出的互斥锁
 std::vector<std::thread> threads; // 存储所有线程
 std::unordered_map<std::string, std::string> umap;
+std::unordered_map<std::string, std::chrono::steady_clock::time_point> expireTimeMap;
 
 void parserRedis(std::string& input, std::vector<std::string> &result) {
   std::istringstream stream(input);
-  // std::cout << "input:" << input << '\n';
-  
   std::string line;
   std::getline(stream, line, '\r');
   stream.get();
-  std::cout << "line:" << line << '\n';
-    if (line.empty() || line[0] != '*') {
-      throw std::invalid_argument("Invalid RESP input: Expected '*'");
+
+  if (line.empty() || line[0] != '*') {
+    throw std::invalid_argument("Invalid RESP input: Expected '*'");
   }
   int numEle = std::stoi(line.substr(1));//"*2\r\n$2\r\nhi\r\n$4\r\nbaby\r\n"
   for (int i = 0; i < numEle; ++i) {
@@ -58,7 +58,7 @@ void handleClient(int client_fd) {
         std::lock_guard<std::mutex> lock(logMutex);
         std::string input = buffer;
         std::string response;
-        //result.clear();//很关键
+        result.clear();//很关键
         parserRedis(input, result);
         //reply Echo
         if(strcasecmp(result[0].c_str(), "Echo") == 0) {
@@ -76,25 +76,43 @@ void handleClient(int client_fd) {
           
         }
         //reply set
-        if(strcasecmp(result[0].c_str(), "SET") == 0) {
-          
-            //std::lock_guard<std::mutex> lock(logMutex);
-            umap[result[1]] = result[2];
+        if(strcasecmp(result[0].c_str(), "SET") == 0) {//$-1\r\n
+          std::string key = result[1];
+          std::string value = result[2];  
+          if(result.size() > 3 && !strcasecmp(result[3].c_str(), "PX")) {
+            cout <<"Expire time exists" << '\n';
+            int px = std::stoi(result[4]);
+            expireTimeMap[key] = std::chrono::steady_clock::now() + std::chrono::milliseconds(px);
+          }          
+          //std::lock_guard<std::mutex> lock(logMutex);
+          umap[key] = result[2];
           response = "+OK\r\n";
+
         }
         //reply get
         if(strcasecmp(result[0].c_str(), "GET") == 0) {//$3\r\nbar\r\n
-          std::string str = umap[result[1]];
-          std::ostringstream oss;
-          oss << "$" << str.size() << "\r\n" << str << "\r\n";
-          response = oss.str();  
+          std::string key = result[1];
+          std::string str = umap[key];
+          auto start = std::chrono::steady_clock::now();
+          auto end = expireTimeMap[key];
+          auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+          cout << "duration time:" << duration.count() << '\n';
+          if (expireTimeMap.find(key) != expireTimeMap.end() && expireTimeMap[key] <= std::chrono::steady_clock::now()) {
+            umap.erase(key);
+            expireTimeMap.erase(key);
+            cout << "Time expired" <<'\n';
+            response = "$-1\r\n"; // 返回空
+          }else{ 
+            std::ostringstream oss;
+            oss << "$" << str.size() << "\r\n" << str << "\r\n";
+            response = oss.str();  
+          }
         }
         //send messages
         int ret = send(client_fd, response.c_str(), response.size(), 0); //不能用sizeof(res.c_str())因为这里计算的是指针的大小
         if(ret == -1) {
           std::cerr << "Send failed with errno: " << errno << std::endl;
         }
-        result.clear();
     }
     close(client_fd); 
 }
