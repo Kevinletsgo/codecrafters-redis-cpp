@@ -79,33 +79,45 @@ void handleClient(int client_fd) {
         if(strcasecmp(result[0].c_str(), "SET") == 0) {//$-1\r\n
           std::string key = result[1];
           std::string value = result[2];  
-          if(result.size() > 3 && !strcasecmp(result[3].c_str(), "PX")) {
+          if(result.size() > 4 && !strcasecmp(result[3].c_str(), "PX")) {
             cout <<"Expire time exists" << '\n';
             int px = std::stoi(result[4]);
             expireTimeMap[key] = std::chrono::steady_clock::now() + std::chrono::milliseconds(px);
+            umap[key] = result[2];
+            response = "+OK\r\n";
+          }else{
+            if(expireTimeMap.find(key) != expireTimeMap.end()) {
+              expireTimeMap.erase(key);
+            }
+            umap[key] = result[2];
+            response = "+OK\r\n";
           }          
           //std::lock_guard<std::mutex> lock(logMutex);
-          umap[key] = result[2];
-          response = "+OK\r\n";
-
         }
         //reply get
         if(strcasecmp(result[0].c_str(), "GET") == 0) {//$3\r\nbar\r\n
           std::string key = result[1];
-          std::string str = umap[key];
-          auto start = std::chrono::steady_clock::now();
-          auto end = expireTimeMap[key];
-          auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
-          cout << "duration time:" << duration.count() << '\n';
-          if (expireTimeMap.find(key) != expireTimeMap.end() && expireTimeMap[key] <= std::chrono::steady_clock::now()) {
+          std::string value = umap[key];
+
+          auto it = expireTimeMap.find(key);
+          if (umap.find(key) == umap.end()) {
+            cout << "cannot find the key\n";
+            response = "$-1\r\n";
+          }
+          cout << (it == expireTimeMap.end()) << '\n';
+          if (it != expireTimeMap.end() && it->second <= std::chrono::steady_clock::now())
+          {
             umap.erase(key);
-            expireTimeMap.erase(key);
+            int ret = expireTimeMap.erase(key);
+            if(ret == 1) {
+              cout << "delete expireTime successful!\n";
+            }
             cout << "Time expired" <<'\n';
             response = "$-1\r\n"; // 返回空
           }else{ 
             std::ostringstream oss;
-            oss << "$" << str.size() << "\r\n" << str << "\r\n";
-            response = oss.str();  
+            oss << "$" << value.size() << "\r\n" << value << "\r\n";
+            response = oss.str();
           }
         }
         //send messages
