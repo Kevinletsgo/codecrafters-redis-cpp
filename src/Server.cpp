@@ -13,12 +13,14 @@
 #include <sstream>
 #include <unordered_map>
 #include <chrono>
-
+#include <fstream>
 using std::cout;
 std::mutex logMutex; // 控制日志输出的互斥锁
 std::vector<std::thread> threads; // 存储所有线程
 std::unordered_map<std::string, std::string> umap;
 std::unordered_map<std::string, std::chrono::steady_clock::time_point> expireTimeMap;
+std::string dir;
+std::string dbfilename;
 
 void parserRedis(std::string& input, std::vector<std::string> &result) {
   std::istringstream stream(input);
@@ -104,7 +106,6 @@ void handleClient(int client_fd) {
             cout << "cannot find the key\n";
             response = "$-1\r\n";
           }
-          cout << (it == expireTimeMap.end()) << '\n';
           if (it != expireTimeMap.end() && it->second <= std::chrono::steady_clock::now())
           {
             umap.erase(key);
@@ -120,6 +121,20 @@ void handleClient(int client_fd) {
             response = oss.str();
           }
         }
+        if(strcasecmp(result[0].c_str(), "CONFIG") == 0 && strcasecmp(result[1].c_str(), "GET") == 0) {
+          if(strcasecmp(result[2].c_str(),"dir") == 0) {
+            response = "*2\r\n$3\r\ndir\r\n";
+            std::ostringstream oss;
+            oss << "$" << dir.size() << "\r\n" << dir << "\r\n";
+            response += oss.str();
+          }
+          if(strcasecmp(result[2].c_str(),"dbfilename") == 0) {
+            response = "*2\r\n$10\r\ndbfilename\r\n";
+            std::ostringstream oss;
+            oss << "$" << dbfilename.size() << "\r\n" << dbfilename << "\r\n";
+            response += oss.str();            
+          }
+        }
         //send messages
         int ret = send(client_fd, response.c_str(), response.size(), 0); //不能用sizeof(res.c_str())因为这里计算的是指针的大小
         if(ret == -1) {
@@ -128,6 +143,7 @@ void handleClient(int client_fd) {
     }
     close(client_fd); 
 }
+
 int main(int argc, char **argv) {
   // Flush after every std::cout / std::cerr
   std::cout << std::unitbuf;
@@ -137,7 +153,14 @@ int main(int argc, char **argv) {
   std::cout << "Logs from your program will appear here!\n";
 
   // Uncomment this block to pass the first stage
-  
+  for(int i = 1; i < argc; ++i) {
+    if (strcmp(argv[i], "--dir") == 0) {
+      dir = argv[++i];
+    }
+    if (strcmp(argv[i], "--dbfilename") == 0) {
+      dbfilename = argv[++i];
+    }
+  }
   int server_fd = socket(AF_INET, SOCK_STREAM, 0);
   if (server_fd < 0) {
    std::cerr << "Failed to create server socket\n";
